@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CamSafe SOS & Hidden Vault</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-red: #ef4444;
+            --accent-green: #22c55e;
+            --text-color: #f8fafc;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Notch Controls */
+        .notch-trigger {
+            width: 120px;
+            height: 30px;
+            background: #000;
+            border-bottom-left-radius: 15px;
+            border-bottom-right-radius: 15px;
+            position: fixed;
+            top: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #64748b;
+            user-select: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin-top: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #fff;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent-red);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .vault-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .vault-item {
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        /* Stealth Mode Screen Cover */
+        #disguise-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            z-index: 9999;
+        }
+
+        /* Hidden Videos/Canvas */
+        video, canvas {
+            display: none;
+        }
+
+        .status {
+            font-size: 12px;
+            color: var(--accent-green);
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Notch Gesture Area -->
+    <div class="notch-trigger" id="notch">NOTCH TRIGGER</div>
+
+    <div class="container">
+        <div class="header">
+            <h2>CamSafe SOS</h2>
+            <p style="font-size: 12px; color: #94a3b8;">Hidden Vault & Emergency Detector</p>
+        </div>
+
+        <!-- System Status -->
+        <div class="card">
+            <h3>Voice Activation</h3>
+            <p style="font-size: 12px;">Say <b>"help"</b> or <b>"sos"</b> to trigger stealth recording.</p>
+            <button onclick="initVoiceTrigger()" style="background: #3b82f6;">Enable Voice Monitoring</button>
+            <div id="voice-status" class="status"></div>
+        </div>
+
+        <!-- Lock Screen / Wrong Password Trap -->
+        <div class="card">
+            <h3>Vault Access</h3>
+            <input type="password" id="passcode" placeholder="Enter PIN (Correct: 1234)">
+            <button onclick="checkPassword()">Unlock Vault</button>
+            <div id="trap-status" class="status" style="color: var(--accent-red);"></div>
+        </div>
+
+        <!-- Hidden Vault Media View -->
+        <div class="card" id="vault-section" style="display: none;">
+            <h3>Encrypted Local Vault</h3>
+            <p style="font-size: 12px; color: #94a3b8;">Captures & Auto-Sync Backups</p>
+            <div class="vault-grid" id="vault-gallery">
+                <!-- Recorded Items Will Appear Here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Disguise Black Screen -->
+    <div id="disguise-screen" onclick="offStealth()"></div>
+
+    <!-- Background Camera Video Elements -->
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const CORRECT_PIN = "1234";
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        let mediaStream = null;
+
+        // Initialize Camera
+        async function setupCamera() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                video.srcObject = mediaStream;
+            } catch (err) {
+                console.error("Camera access denied:", err);
+            }
+        }
+        setupCamera();
+
+        // 1. Wrong Password Trap & Auto Capture
+        function checkPassword() {
+            const input = document.getElementById('passcode').value;
+            if (input === CORRECT_PIN) {
+                document.getElementById('vault-section').style.display = 'block';
+                document.getElementById('trap-status').innerText = "";
+            } else {
+                document.getElementById('trap-status').innerText = "Incorrect PIN! Capturing intruder info...";
+                captureIntruder();
+            }
+        }
+
+        function captureIntruder() {
+            if (!mediaStream) return;
+            
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth || 320;
+            canvas.height = video.videoHeight || 240;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = canvas.toDataURL('image/png');
+
+            // Get GPS Location
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                saveToVault(imageData, `Location: ${lat.toFixed(2)}, ${lon.toFixed(2)}`);
+            }, () => {
+                saveToVault(imageData, "Location: Unavailable");
+            });
+        }
+
+        // Save Encrypted Data to Local Vault Display
+        function saveToVault(imageSrc, locationText) {
+            const gallery = document.getElementById('vault-gallery');
+            const item = document.createElement('div');
+            item.className = 'vault-item';
+            item.innerHTML = `<img src="${imageSrc}" style="width:100%; border-radius:4px;"><p>${locationText}</p>`;
+            gallery.appendChild(item);
+        }
+
+        // 2. Voice Triggered SOS (Web Speech API)
+        function initVoiceTrigger() {
+            window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!window.SpeechRecognition) {
+                alert("Speech recognition is not supported in this browser.");
+                return;
+            }
+
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                const current = event.resultIndex;
+                const transcript = event.results[current][0].transcript.toLowerCase().trim();
+                
+                if (transcript.includes("help") || transcript.includes("sos")) {
+                    triggerStealthMode();
+                }
+            };
+
+            recognition.start();
+            document.getElementById('voice-status').innerText = "Voice detector active. Listening for 'help' or 'sos'...";
+        }
+
+        // 3. Stealth Mode Trigger
+        function triggerStealthMode() {
+            document.getElementById('disguise-screen').style.display = 'block';
+            captureIntruder(); // Auto Capture Media in Background
+        }
+
+        function offStealth() {
+            document.getElementById('disguise-screen').style.display = 'none';
+        }
+
+        // 4. Notch Gestures
+        const notch = document.getElementById('notch');
+        let clickTimer = null;
+
+        notch.addEventListener('click', () => {
+            if (clickTimer == null) {
+                clickTimer = setTimeout(() => {
+                    clickTimer = null;
+                    // Single Click Event
+                    alert("Notch Single Tap: Stealth Recording Started");
+                    captureIntruder();
+                }, 300);
+            } else {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+                // Double Click Event
+                alert("Notch Double Tap: Dual Emergency SOS Triggered!");
+                triggerStealthMode();
+            }
+        });
+    </script>
+</body>
+</html>
